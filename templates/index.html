@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Wallet Monitor</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/style.css"
+    >
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>
+        مانیتورینگ کیف پول
+    </h1>
+
+    <div class="stats">
+
+        <div class="stat">
+            <strong id="wallets">
+                0
+            </strong>
+
+            <span>
+                کیف پول
+            </span>
+        </div>
+
+        <div class="stat">
+            <strong id="funded">
+                0
+            </strong>
+
+            <span>
+                دارای موجودی
+            </span>
+        </div>
+
+        <div class="stat">
+            <strong id="checks">
+                0
+            </strong>
+
+            <span>
+                بررسی انجام‌شده
+            </span>
+        </div>
+
+    </div>
+
+
+    <div class="card">
+
+        <h2>
+            افزودن کیف پول
+        </h2>
+
+        <p class="warning">
+            فقط آدرس عمومی کیف پول را وارد کنید.
+            Seed Phrase و Private Key ذخیره نمی‌شوند.
+        </p>
+
+        <div class="form">
+
+            <input
+                id="address"
+                placeholder="آدرس 0x..."
+            >
+
+            <input
+                id="label"
+                placeholder="نام / برچسب"
+            >
+
+            <input
+                id="report"
+                placeholder="شناسه یا نام Report"
+            >
+
+            <input
+                id="reportTime"
+                placeholder="تاریخ و ساعت Report"
+            >
+
+            <button
+                onclick="addWallet()"
+            >
+                افزودن
+            </button>
+
+        </div>
+
+        <div id="message"></div>
+
+    </div>
+
+
+    <div class="card">
+
+        <div class="toolbar">
+
+            <h2>
+                گزارش کیف پول‌ها
+            </h2>
+
+            <input
+                id="search"
+                placeholder="جستجو..."
+                oninput="loadWallets()"
+            >
+
+        </div>
+
+
+        <div class="table-container">
+
+            <table>
+
+                <thead>
+
+                <tr>
+
+                    <th>
+                        آدرس
+                    </th>
+
+                    <th>
+                        برچسب
+                    </th>
+
+                    <th>
+                        موجودی ETH
+                    </th>
+
+                    <th>
+                        Report
+                    </th>
+
+                    <th>
+                        زمان Report
+                    </th>
+
+                    <th>
+                        آخرین بررسی
+                    </th>
+
+                </tr>
+
+                </thead>
+
+                <tbody id="rows">
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+async function loadStats() {
+
+    const response =
+        await fetch("/api/stats");
+
+    const data =
+        await response.json();
+
+    document.getElementById(
+        "wallets"
+    ).textContent = data.wallets;
+
+    document.getElementById(
+        "funded"
+    ).textContent = data.funded;
+
+    document.getElementById(
+        "checks"
+    ).textContent = data.checks;
+}
+
+
+async function loadWallets() {
+
+    const search =
+        document.getElementById(
+            "search"
+        ).value;
+
+    const response =
+        await fetch(
+            "/api/wallets?q="
+            + encodeURIComponent(search)
+        );
+
+    const data =
+        await response.json();
+
+    const rows =
+        document.getElementById(
+            "rows"
+        );
+
+    rows.innerHTML = "";
+
+    data.forEach(wallet => {
+
+        const tr =
+            document.createElement(
+                "tr"
+            );
+
+        tr.innerHTML = `
+
+            <td class="address">
+                ${wallet.address}
+            </td>
+
+            <td>
+                ${wallet.label || "-"}
+            </td>
+
+            <td class="${
+                wallet.has_balance
+                    ? "positive"
+                    : ""
+            }">
+
+                ${Number(
+                    wallet.balance_eth
+                ).toFixed(8)}
+
+            </td>
+
+            <td>
+                ${wallet.source_report || "-"}
+            </td>
+
+            <td>
+                ${
+                    wallet.report_received_at
+                    || "-"
+                }
+            </td>
+
+            <td>
+                ${
+                    wallet.last_checked_at
+                    || "-"
+                }
+            </td>
+
+        `;
+
+        rows.appendChild(tr);
+
+    });
+}
+
+
+async function addWallet() {
+
+    const message =
+        document.getElementById(
+            "message"
+        );
+
+    const data = {
+
+        address:
+            document.getElementById(
+                "address"
+            ).value,
+
+        label:
+            document.getElementById(
+                "label"
+            ).value,
+
+        source_report:
+            document.getElementById(
+                "report"
+            ).value,
+
+        report_received_at:
+            document.getElementById(
+                "reportTime"
+            ).value
+
+    };
+
+
+    const response =
+        await fetch(
+            "/api/wallets",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify(data)
+            }
+        );
+
+
+    const result =
+        await response.json();
+
+
+    if (result.ok) {
+
+        message.textContent =
+            "کیف پول با موفقیت اضافه شد.";
+
+        document.getElementById(
+            "address"
+        ).value = "";
+
+        document.getElementById(
+            "label"
+        ).value = "";
+
+        document.getElementById(
+            "report"
+        ).value = "";
+
+        document.getElementById(
+            "reportTime"
+        ).value = "";
+
+        await loadWallets();
+        await loadStats();
+
+    } else {
+
+        message.textContent =
+            result.error || "خطا";
+
+    }
+
+}
+
+
+loadStats();
+loadWallets();
+
+
+setInterval(
+    loadStats,
+    15000
+);
+
+setInterval(
+    loadWallets,
+    15000
+);
+
+</script>
+
+</body>
+
+</html>
