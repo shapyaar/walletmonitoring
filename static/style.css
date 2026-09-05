@@ -1,0 +1,148 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #f3f5f7;
+    color: #222;
+    font-family: Tahoma, Arial, sans-serif;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 30px auto;
+    padding: 0 16px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.card {
+    background: white;
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 14px;
+    box-shadow: 0 3px 15px rgba(0,0,0,.08);
+}
+
+.stats {
+    display: grid;
+    grid-template-columns:
+        repeat(3, 1fr);
+    gap: 15px;
+}
+
+.stat {
+    background: white;
+    padding: 25px;
+    text-align: center;
+    border-radius: 14px;
+    box-shadow:
+        0 3px 15px rgba(0,0,0,.08);
+}
+
+.stat strong {
+    display: block;
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+
+.stat span {
+    color: #777;
+}
+
+.warning {
+    color: #777;
+    font-size: 13px;
+}
+
+.form {
+    display: grid;
+    grid-template-columns:
+        2fr 1fr 1fr 1fr auto;
+    gap: 8px;
+}
+
+input,
+button {
+    padding: 11px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+button {
+    background: #222;
+    color: white;
+    cursor: pointer;
+}
+
+button:hover {
+    opacity: .85;
+}
+
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.toolbar input {
+    width: 260px;
+}
+
+.table-container {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    padding: 12px;
+    border-bottom:
+        1px solid #eee;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.address {
+    direction: ltr;
+    text-align: left;
+    font-family: monospace;
+}
+
+.positive {
+    font-weight: bold;
+}
+
+#message {
+    margin-top: 12px;
+}
+
+@media (max-width: 800px) {
+
+    .stats {
+        grid-template-columns: 1fr;
+    }
+
+    .form {
+        grid-template-columns: 1fr;
+    }
+
+    .toolbar {
+        display: block;
+    }
+
+    .toolbar input {
+        width: 100%;
+    }
+
+}
