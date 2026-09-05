@@ -1,6 +1,9 @@
 services:
+
   - type: web
+
     name: wallet-monitor
+
     runtime: python
 
     buildCommand: pip install -r requirements.txt
@@ -9,8 +12,11 @@ services:
 
     envVars:
 
-      - key: RPC_URL
-        sync: false
+      - key: BSC_RPC_URL
+        value: https://bsc-dataseed.binance.org
+
+      - key: ETH_RPC_URL
+        value: https://cloudflare-eth.com
 
       - key: TELEGRAM_BOT_TOKEN
         sync: false
@@ -21,5 +27,11 @@ services:
       - key: POLL_SECONDS
         value: "60"
 
+      - key: TELEGRAM_POLL_SECONDS
+        value: "5"
+
       - key: ENABLE_MONITOR
+        value: "1"
+
+      - key: ENABLE_TELEGRAM
         value: "1"
