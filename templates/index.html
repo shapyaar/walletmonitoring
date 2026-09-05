@@ -3,19 +3,21 @@
 
 <head>
 
-    <meta charset="UTF-8">
+<meta charset="UTF-8">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
-    <title>Wallet Monitor</title>
+<title>
+    Wallet Monitor
+</title>
 
-    <link
-        rel="stylesheet"
-        href="/static/style.css"
-    >
+<link
+    rel="stylesheet"
+    href="/static/style.css"
+>
 
 </head>
 
@@ -23,153 +25,224 @@
 
 <div class="container">
 
-    <h1>
-        مانیتورینگ کیف پول
-    </h1>
-
-    <div class="stats">
-
-        <div class="stat">
-            <strong id="wallets">
-                0
-            </strong>
-
-            <span>
-                کیف پول
-            </span>
-        </div>
-
-        <div class="stat">
-            <strong id="funded">
-                0
-            </strong>
-
-            <span>
-                دارای موجودی
-            </span>
-        </div>
-
-        <div class="stat">
-            <strong id="checks">
-                0
-            </strong>
-
-            <span>
-                بررسی انجام‌شده
-            </span>
-        </div>
-
-    </div>
+<h1>
+    🚀 مانیتورینگ کیف پول
+</h1>
 
 
-    <div class="card">
+<div class="stats">
 
-        <h2>
-            افزودن کیف پول
-        </h2>
+<div class="stat">
+<strong id="wallets">0</strong>
+<span>کیف پول</span>
+</div>
 
-        <p class="warning">
-            فقط آدرس عمومی کیف پول را وارد کنید.
-            Seed Phrase و Private Key ذخیره نمی‌شوند.
-        </p>
+<div class="stat">
+<strong id="funded">0</strong>
+<span>دارای موجودی</span>
+</div>
 
-        <div class="form">
+<div class="stat">
+<strong id="checks">0</strong>
+<span>بررسی‌ها</span>
+</div>
 
-            <input
-                id="address"
-                placeholder="آدرس 0x..."
-            >
+<div class="stat">
+<strong id="reports">0</strong>
+<span>Report ها</span>
+</div>
 
-            <input
-                id="label"
-                placeholder="نام / برچسب"
-            >
-
-            <input
-                id="report"
-                placeholder="شناسه یا نام Report"
-            >
-
-            <input
-                id="reportTime"
-                placeholder="تاریخ و ساعت Report"
-            >
-
-            <button
-                onclick="addWallet()"
-            >
-                افزودن
-            </button>
-
-        </div>
-
-        <div id="message"></div>
-
-    </div>
+</div>
 
 
-    <div class="card">
+<div class="card">
 
-        <div class="toolbar">
+<h2>
+افزودن کیف پول
+</h2>
 
-            <h2>
-                گزارش کیف پول‌ها
-            </h2>
+<p class="warning">
+فقط آدرس عمومی کیف پول وارد کنید.
+Seed Phrase و Private Key پردازش یا ذخیره نمی‌شوند.
+</p>
 
-            <input
-                id="search"
-                placeholder="جستجو..."
-                oninput="loadWallets()"
-            >
+<div class="form">
 
-        </div>
+<input
+    id="address"
+    placeholder="0x..."
+>
+
+<select id="network">
+
+<option value="BSC">
+BSC - BNB
+</option>
+
+<option value="ETH">
+Ethereum - ETH
+</option>
+
+</select>
+
+<input
+    id="label"
+    placeholder="نام / برچسب"
+>
+
+<input
+    id="report"
+    placeholder="Report"
+>
+
+<input
+    id="reportTime"
+    placeholder="تاریخ و ساعت Report"
+>
+
+<button onclick="addWallet()">
+افزودن
+</button>
+
+</div>
+
+<div id="message"></div>
+
+</div>
 
 
-        <div class="table-container">
+<div class="card">
 
-            <table>
+<div class="toolbar">
 
-                <thead>
+<h2>
+کیف پول‌ها
+</h2>
 
-                <tr>
+<div>
 
-                    <th>
-                        آدرس
-                    </th>
+<select
+    id="networkFilter"
+    onchange="loadWallets()"
+>
 
-                    <th>
-                        برچسب
-                    </th>
+<option value="">
+همه شبکه‌ها
+</option>
 
-                    <th>
-                        موجودی ETH
-                    </th>
+<option value="BSC">
+BSC
+</option>
 
-                    <th>
-                        Report
-                    </th>
+<option value="ETH">
+Ethereum
+</option>
 
-                    <th>
-                        زمان Report
-                    </th>
+</select>
 
-                    <th>
-                        آخرین بررسی
-                    </th>
+<input
+    id="search"
+    placeholder="جستجو..."
+    oninput="loadWallets()"
+>
 
-                </tr>
+</div>
 
-                </thead>
+</div>
 
-                <tbody id="rows">
 
-                </tbody>
+<div class="table-container">
 
-            </table>
+<table>
 
-        </div>
+<thead>
 
-    </div>
+<tr>
+
+<th>
+آدرس
+</th>
+
+<th>
+شبکه
+</th>
+
+<th>
+موجودی
+</th>
+
+<th>
+Report
+</th>
+
+<th>
+زمان Report
+</th>
+
+<th>
+آخرین بررسی
+</th>
+
+</tr>
+
+</thead>
+
+<tbody id="rows">
+</tbody>
+
+</table>
+
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h2>
+📄 Report های دریافت‌شده
+</h2>
+
+<div class="table-container">
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>
+نام فایل
+</th>
+
+<th>
+Telegram Message ID
+</th>
+
+<th>
+تاریخ پیام
+</th>
+
+<th>
+تاریخ دریافت
+</th>
+
+<th>
+تعداد آدرس
+</th>
+
+</tr>
+
+</thead>
+
+<tbody id="reportsRows">
+</tbody>
+
+</table>
+
+</div>
+
+</div>
 
 </div>
 
@@ -195,21 +268,33 @@ async function loadStats() {
     document.getElementById(
         "checks"
     ).textContent = data.checks;
+
+    document.getElementById(
+        "reports"
+    ).textContent = data.reports;
 }
 
 
 async function loadWallets() {
 
-    const search =
+    const q =
         document.getElementById(
             "search"
         ).value;
 
+    const network =
+        document.getElementById(
+            "networkFilter"
+        ).value;
+
+    const url =
+        "/api/wallets?q="
+        + encodeURIComponent(q)
+        + "&network="
+        + encodeURIComponent(network);
+
     const response =
-        await fetch(
-            "/api/wallets?q="
-            + encodeURIComponent(search)
-        );
+        await fetch(url);
 
     const data =
         await response.json();
@@ -228,47 +313,101 @@ async function loadWallets() {
                 "tr"
             );
 
+        const symbol =
+            wallet.network === "BSC"
+            ? "BNB"
+            : "ETH";
+
         tr.innerHTML = `
 
-            <td class="address">
-                ${wallet.address}
-            </td>
+<td class="address">
+${wallet.address}
+</td>
 
-            <td>
-                ${wallet.label || "-"}
-            </td>
+<td>
+${wallet.network}
+</td>
 
-            <td class="${
-                wallet.has_balance
-                    ? "positive"
-                    : ""
-            }">
+<td class="${
+    wallet.has_balance
+    ? "positive"
+    : ""
+}">
 
-                ${Number(
-                    wallet.balance_eth
-                ).toFixed(8)}
+${Number(
+    wallet.balance
+).toFixed(8)}
+ ${symbol}
 
-            </td>
+</td>
 
-            <td>
-                ${wallet.source_report || "-"}
-            </td>
+<td>
+${wallet.source_report || "-"}
+</td>
 
-            <td>
-                ${
-                    wallet.report_received_at
-                    || "-"
-                }
-            </td>
+<td>
+${wallet.report_received_at || "-"}
+</td>
 
-            <td>
-                ${
-                    wallet.last_checked_at
-                    || "-"
-                }
-            </td>
+<td>
+${wallet.last_checked_at || "-"}
+</td>
 
-        `;
+`;
+
+        rows.appendChild(tr);
+
+    });
+}
+
+
+async function loadReports() {
+
+    const response =
+        await fetch(
+            "/api/reports"
+        );
+
+    const data =
+        await response.json();
+
+    const rows =
+        document.getElementById(
+            "reportsRows"
+        );
+
+    rows.innerHTML = "";
+
+    data.forEach(report => {
+
+        const tr =
+            document.createElement(
+                "tr"
+            );
+
+        tr.innerHTML = `
+
+<td>
+${report.file_name}
+</td>
+
+<td>
+${report.telegram_message_id || "-"}
+</td>
+
+<td>
+${report.telegram_date}
+</td>
+
+<td>
+${report.received_at}
+</td>
+
+<td>
+${report.wallet_count}
+</td>
+
+`;
 
         rows.appendChild(tr);
 
@@ -288,6 +427,11 @@ async function addWallet() {
         address:
             document.getElementById(
                 "address"
+            ).value,
+
+        network:
+            document.getElementById(
+                "network"
             ).value,
 
         label:
@@ -332,7 +476,7 @@ async function addWallet() {
     if (result.ok) {
 
         message.textContent =
-            "کیف پول با موفقیت اضافه شد.";
+            "کیف پول اضافه شد.";
 
         document.getElementById(
             "address"
@@ -365,6 +509,7 @@ async function addWallet() {
 
 loadStats();
 loadWallets();
+loadReports();
 
 
 setInterval(
@@ -374,6 +519,11 @@ setInterval(
 
 setInterval(
     loadWallets,
+    15000
+);
+
+setInterval(
+    loadReports,
     15000
 );
 
