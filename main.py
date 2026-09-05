@@ -12,7 +12,7 @@ from web3 import Web3
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 # --- تنظیمات اصلی ---
-BOT_TOKEN = '8794980895:AAG7PSNwSZiWVyxj58POCVTV9ZgPMG-LJ_U'
+BOT_TOKEN = '8937335440:AAH_GvnwYvTx5mEXnMvROkuYmSfX7pZW8Lc'
 SOURCE_CHANNEL = -1003533610913
 REPORT_CHANNEL = -1004337084974
 RENDER_URL = "https://regroupmywallet.onrender.com" 
