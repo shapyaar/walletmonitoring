@@ -1,22 +1,30 @@
 # Wallet Monitor
 
-Flask web service for monitoring public EVM wallet addresses.
+Wallet monitoring web service built with Flask.
 
 ## Features
 
-- Add public wallet addresses
-- Check ETH balance
-- Store wallet reports
-- Store Report date/time
-- Store monitoring history
-- Search wallets
-- Telegram notification
-- Render Web Service compatible
+- BSC monitoring
+- Ethereum monitoring
+- BNB balance monitoring
+- ETH balance monitoring
+- Telegram Report receiver
+- Report filename storage
+- Telegram message ID storage
+- Telegram message date/time storage
+- Report received date/time storage
+- Public wallet address extraction
+- Wallet monitoring history
+- Telegram balance alerts
+- Web dashboard
+- Render Web Service support
 
 ## Security
 
-This application does not collect,
-store or process Seed Phrases or Private Keys.
+The application only processes public EVM wallet addresses.
+
+Seed Phrases and Private Keys are not collected,
+stored or processed.
 
 ## Render
 
@@ -30,7 +38,9 @@ gunicorn app:app
 
 ## Environment Variables
 
-RPC_URL
+BSC_RPC_URL
+
+ETH_RPC_URL
 
 TELEGRAM_BOT_TOKEN
 
@@ -38,4 +48,8 @@ TELEGRAM_CHAT_ID
 
 POLL_SECONDS=60
 
+TELEGRAM_POLL_SECONDS=5
+
 ENABLE_MONITOR=1
+
+ENABLE_TELEGRAM=1
