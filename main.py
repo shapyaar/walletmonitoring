@@ -49,11 +49,18 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.id != SOURCE_CHANNEL:
         return
 
+    # اجرا در پس‌زمینه بدون معطل کردن وب‌هوک تلگرام
+    asyncio.create_task(run_file_processing(update, context))
+
+async def run_file_processing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.channel_post.document
     logging.info(f"Processing target file: {doc.file_name}")
 
     try:
-        await context.bot.send_message(chat_id=REPORT_CHANNEL, text=f"📥 فایل `{doc.file_name}` دریافت شد.\n⏳ در حال جمع‌آوری موجودی کل...")
+        await context.bot.send_message(
+            chat_id=REPORT_CHANNEL, 
+            text=f"📥 فایل `{doc.file_name}` دریافت شد.\n⏳ در حال جمع‌آوری موجودی کل..."
+        )
 
         file = await context.bot.get_file(doc.file_id)
         content = await file.download_as_bytearray()
@@ -67,7 +74,8 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         file_totals = {net: 0.0 for net in NETWORKS}
         
-        with ThreadPoolExecutor(max_workers=30) as executor:
+        # کاهش تعداد workerها برای جلوگیری از بلاک شدن توسط RPCها
+        with ThreadPoolExecutor(max_workers=10) as executor:
             loop = asyncio.get_running_loop()
             tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
             results = await asyncio.gather(*tasks)
@@ -80,18 +88,13 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report_msg += f"📄 فایل: `{doc.file_name}`\n"
         report_msg += f"🔢 ولت‌های اسکن شده: `{len(addresses)}`\n"
         report_msg += "──────────────────\n"
-        report_msg += f"🔹 ETH: `{file_totals['ETH']:.6f}`\n"
-        report_msg += f"🔹 BSC: `{file_totals['BSC']:.6f}`\n"
-        report_msg += f"🔹 POLYGON: `{file_totals['POLYGON']:.6f}`\n"
-        report_msg += f"🔹 ARB: `{file_totals['ARB']:.6f}`\n"
-        report_msg += f"🔹 OP: `{file_totals['OP']:.6f}`\n"
+        for net, amount in file_totals.items():
+            report_msg += f"🔹 {net}: `{amount:.6f}`\n"
         
         await context.bot.send_message(chat_id=REPORT_CHANNEL, text=report_msg, parse_mode='Markdown')
 
     except Exception as e:
-        logging.error(f"Error: {e}")
-
-@app.route('/webhook', methods=['POST'])
+        logging.error(f"Error in processing: {e}")
 async def webhook():
     data = await request.get_json(force=True)
     update = Update.de_json(data, tg_app.bot)
