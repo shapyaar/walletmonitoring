@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 BOT_TOKEN = '8937335440:AAH_GvnwYvTx5mEXnMvROkuYmSfX7pZW8Lc'
 SOURCE_CHANNEL = -1003533610913
 REPORT_CHANNEL = -1004337084974
-RENDER_URL = "https://regroupmywallet.onrender.com" 
+RENDER_URL = "https://walletmonitoring.onrender.com" 
 
 NETWORKS = {
     'ETH': 'https://eth.llamarpc.com',
