@@ -52,7 +52,11 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logging.info(f"Processing target file: {doc.file_name}")
 
     try:
-        # فایل دانلود و پردازش می‌شود بدون ارسال هیچ پیام اضافی در حین کار
+        await context.bot.send_message(
+            chat_id=REPORT_CHANNEL, 
+            text=f"📥 فایل `{doc.file_name}` دریافت شد.\n⏳ در حال جمع‌آوری موجودی کل..."
+        )
+
         file = await context.bot.get_file(doc.file_id)
         content = await file.download_as_bytearray()
         text = content.decode('utf-8', errors='ignore')
@@ -81,7 +85,6 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for net, amount in file_totals.items():
             report_msg += f"🔹 {net}: `{amount:.6f}`\n"
         
-        # ارسال گزارش نهایی منحصراً به کانال مقصد
         await context.bot.send_message(chat_id=REPORT_CHANNEL, text=report_msg, parse_mode='Markdown')
 
     except Exception as e:
@@ -101,6 +104,7 @@ async def health_check():
 async def initialize_bot():
     tg_app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report))
     
+    # راه‌اندازی و مقداردهی اولیه اجباری پکیج جدید
     await tg_app.initialize()
     await tg_app.start()
     
