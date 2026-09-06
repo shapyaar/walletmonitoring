@@ -24,7 +24,10 @@ NETWORKS = {
 
 app = Flask(__name__)
 application = Application.builder().token(BOT_TOKEN).build()
-initialized = False
+
+# ساخت یک event loop ثابت
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
 def get_wallet_total(address):
     local_totals = {net: 0.0 for net in NETWORKS}
@@ -50,7 +53,6 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logging.info(f"Processing file: {doc.file_name}")
 
     try:
-        # دانلود فایل
         file = await context.bot.get_file(doc.file_id)
         content = await file.download_as_bytearray()
         text = content.decode('utf-8', errors='ignore')
@@ -66,8 +68,7 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         file_totals = {net: 0.0 for net in NETWORKS}
 
-        with ThreadPoolExecutor(max_workers=15) as executor:
-            loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=12) as executor:
             tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
             results = await asyncio.gather(*tasks)
 
@@ -75,7 +76,6 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for net in NETWORKS:
                 file_totals[net] += res[net]
 
-        # فقط گزارش نهایی
         report_msg = (
             f"📊 **گزارش نهایی**\n"
             f"📄 فایل: `{doc.file_name}`\n"
@@ -91,38 +91,40 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
 
-        logging.info(f"Report sent successfully for {doc.file_name}")
+        logging.info(f"Report sent for {doc.file_name}")
 
     except Exception as e:
         logging.error(f"Error: {e}")
-        await context.bot.send_message(
-            chat_id=REPORT_CHANNEL,
-            text=f"❌ خطا در پردازش فایل `{doc.file_name}`:\n`{str(e)}`"
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=REPORT_CHANNEL,
+                text=f"❌ خطا در پردازش فایل `{doc.file_name}`:\n`{str(e)}`"
+            )
+        except:
+            pass
 
 application.add_handler(
     MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report)
 )
 
+# Initialize یک بار
+loop.run_until_complete(application.initialize())
+logging.info("Application initialized successfully")
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    global initialized
-
     update = Update.de_json(request.get_json(force=True), application.bot)
-
-    async def process():
-        global initialized
-        if not initialized:
-            await application.initialize()
-            initialized = True
-            logging.info("Application initialized")
-
-        await application.process_update(update)
-
+    
+    # اجرای پردازش داخل loop ثابت
+    future = asyncio.run_coroutine_threadsafe(
+        application.process_update(update),
+        loop
+    )
+    
     try:
-        asyncio.run(process())
+        future.result(timeout=120)
     except Exception as e:
-        logging.error(f"Webhook error: {e}")
+        logging.error(f"Webhook processing error: {e}")
 
     return "OK"
 
