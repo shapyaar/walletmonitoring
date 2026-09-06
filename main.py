@@ -23,22 +23,20 @@ NETWORKS = {
 }
 
 app = Flask(__name__)
-application = Application.builder().token(BOT_TOKEN).build()
 
-# ساخت یک event loop ثابت
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
+# ساخت اپلیکیشن
+application = Application.builder().token(BOT_TOKEN).build()
 
 def get_wallet_total(address):
     local_totals = {net: 0.0 for net in NETWORKS}
     for net, rpc in NETWORKS.items():
         try:
-            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={'timeout': 4}))
+            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={'timeout': 5}))
             checksum = Web3.to_checksum_address(address.strip())
             balance = w3.eth.get_balance(checksum)
             if balance > 0:
                 local_totals[net] = float(w3.from_wei(balance, 'ether'))
-        except:
+        except Exception:
             continue
     return local_totals
 
@@ -50,7 +48,7 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     doc = update.channel_post.document
-    logging.info(f"Processing file: {doc.file_name}")
+    logging.info(f"Processing: {doc.file_name}")
 
     try:
         file = await context.bot.get_file(doc.file_id)
@@ -62,13 +60,14 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not addresses:
             await context.bot.send_message(
                 chat_id=REPORT_CHANNEL,
-                text=f"❌ فایل `{doc.file_name}` هیچ آدرس معتبری نداشت."
+                text=f"❌ فایل `{doc.file_name}` آدرس معتبری نداشت."
             )
             return
 
         file_totals = {net: 0.0 for net in NETWORKS}
 
-        with ThreadPoolExecutor(max_workers=12) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            loop = asyncio.get_running_loop()
             tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
             results = await asyncio.gather(*tasks)
 
@@ -76,62 +75,53 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for net in NETWORKS:
                 file_totals[net] += res[net]
 
-        report_msg = (
+        report = (
             f"📊 **گزارش نهایی**\n"
             f"📄 فایل: `{doc.file_name}`\n"
             f"🔢 تعداد ولت: `{len(addresses)}`\n"
             f"──────────────────\n"
         )
         for net, amount in file_totals.items():
-            report_msg += f"🔹 {net}: `{amount:.6f}`\n"
+            report += f"🔹 {net}: `{amount:.6f}`\n"
 
         await context.bot.send_message(
             chat_id=REPORT_CHANNEL,
-            text=report_msg,
-            parse_mode='Markdown'
+            text=report,
+            parse_mode="Markdown"
+        )
+        logging.info("Report sent successfully")
+
+    except Exception as e:
+        logging.exception("Error while processing")
+        await context.bot.send_message(
+            chat_id=REPORT_CHANNEL,
+            text=f"❌ خطا در پردازش `{doc.file_name}`:\n`{e}`"
         )
 
-        logging.info(f"Report sent for {doc.file_name}")
+application.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report))
 
-    except Exception as e:
-        logging.error(f"Error: {e}")
-        try:
-            await context.bot.send_message(
-                chat_id=REPORT_CHANNEL,
-                text=f"❌ خطا در پردازش فایل `{doc.file_name}`:\n`{str(e)}`"
-            )
-        except:
-            pass
-
-application.add_handler(
-    MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report)
-)
-
-# Initialize یک بار
-loop.run_until_complete(application.initialize())
-logging.info("Application initialized successfully")
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
+@app.route("/webhook", methods=["POST"])
+async def webhook():
+    """این روت async هست"""
     update = Update.de_json(request.get_json(force=True), application.bot)
-    
-    # اجرای پردازش داخل loop ثابت
-    future = asyncio.run_coroutine_threadsafe(
-        application.process_update(update),
-        loop
-    )
-    
-    try:
-        future.result(timeout=120)
-    except Exception as e:
-        logging.error(f"Webhook processing error: {e}")
-
+    await application.process_update(update)
     return "OK"
 
-@app.route('/')
+@app.route("/")
 def health():
-    return "Bot is running!"
+    return "Bot is running"
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+async def main():
+    await application.initialize()
+    logging.info("Application initialized")
+
+    # اجرای Flask با پشتیبانی از async
+    from hypercorn.asyncio import serve
+    from hypercorn.config import Config
+
+    config = Config()
+    config.bind = [f"0.0.0.0:{os.environ.get('PORT', 10000)}"]
+    await serve(app, config)
+
+if __name__ == "__main__":
+    asyncio.run(main())
