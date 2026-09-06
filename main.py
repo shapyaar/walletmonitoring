@@ -2,12 +2,12 @@ import os
 import re
 import logging
 import asyncio
-from quart import Quart
 from concurrent.futures import ThreadPoolExecutor
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 from web3 import Web3
 
+# تنظیمات لاگ
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -21,9 +21,6 @@ NETWORKS = {
     'ARB': 'https://arb1.arbitrum.io/rpc',
     'OP': 'https://mainnet.optimism.io'
 }
-
-app = Quart(__name__)
-tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 def get_wallet_total(address):
     local_totals = {net: 0.0 for net in NETWORKS}
@@ -81,25 +78,23 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error in handle_document: {e}")
 
-@app.route('/')
-async def health_check():
-    return "Bot is running on Polling mode!"
-
 async def main():
-    # حذف کامل وب‌هوک قبلی برای جلوگیری از تداخل
-    await tg_app.bot.delete_webhook(drop_pending_updates=True)
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
     
-    tg_app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, handle_document))
+    # حذف وب‌هوک احتمالی قبلی
+    await application.bot.delete_webhook(drop_pending_updates=True)
     
-    await tg_app.initialize()
-    await tg_app.start()
+    application.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, handle_document))
     
-    # شروع حالت پالیگ برای دریافت پیام‌ها بدون نیاز به وب‌هوک
-    asyncio.create_task(tg_app.updater.start_polling(allowed_updates=Update.ALL_TYPES))
-    logging.info("Bot started polling successfully.")
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
     
-    port = int(os.environ.get('PORT', 10000))
-    await app.run_task(host='0.0.0.0', port=port)
+    logging.info("Bot is running in pure Polling mode successfully.")
+    
+    # نگه داشتن برنامه روشن برای رندر
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == '__main__':
     asyncio.run(main())
