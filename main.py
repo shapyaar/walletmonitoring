@@ -32,7 +32,7 @@ def get_wallet_total(address):
     local_totals = {net: 0.0 for net in NETWORKS}
     for net, rpc in NETWORKS.items():
         try:
-            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={'timeout': 5}))
+            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={'timeout': 4}))
             checksum = Web3.to_checksum_address(address.strip())
             balance = w3.eth.get_balance(checksum)
             if balance > 0:
@@ -49,14 +49,9 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     doc = update.channel_post.document
-    logging.info(f"Processing target file: {doc.file_name}")
+    logging.info(f"Processing incoming file: {doc.file_name}")
 
     try:
-        await context.bot.send_message(
-            chat_id=REPORT_CHANNEL, 
-            text=f"📥 فایل `{doc.file_name}` دریافت شد.\n⏳ در حال جمع‌آوری موجودی کل..."
-        )
-
         file = await context.bot.get_file(doc.file_id)
         content = await file.download_as_bytearray()
         text = content.decode('utf-8', errors='ignore')
@@ -64,12 +59,12 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         addresses = list(set(re.findall(r"0x[a-fA-F0-9]{40}", text)))
         
         if not addresses:
-            await context.bot.send_message(chat_id=REPORT_CHANNEL, text="❌ آدرس معتبری در فایل یافت نشد.")
             return
 
         file_totals = {net: 0.0 for net in NETWORKS}
         
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        # استفاده از تردپول برای بررسی سریع‌تر ولت‌ها موازی با هم
+        with ThreadPoolExecutor(max_workers=15) as executor:
             loop = asyncio.get_running_loop()
             tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
             results = await asyncio.gather(*tasks)
@@ -85,16 +80,19 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for net, amount in file_totals.items():
             report_msg += f"🔹 {net}: `{amount:.6f}`\n"
         
+        # ارسال گزارش نهایی به کانال مقصد در سکوت کامل
         await context.bot.send_message(chat_id=REPORT_CHANNEL, text=report_msg, parse_mode='Markdown')
+        logging.info(f"Report for {doc.file_name} sent successfully to report channel.")
 
     except Exception as e:
-        logging.error(f"Error in processing: {e}")
+        logging.error(f"Error in processing file: {e}")
 
 @app.route('/webhook', methods=['POST'])
 async def webhook():
     data = await request.get_json(force=True)
     update = Update.de_json(data, tg_app.bot)
-    await tg_app.process_update(update)
+    # اجرای پردازش به‌صورت پس‌زمینه (Background Task) تا وب‌هوک تلگرام بلافاصله پاسخ 200 بگیرد و تداخل ایجاد نشود
+    asyncio.create_task(tg_app.process_update(update))
     return "OK"
 
 @app.route('/')
@@ -104,7 +102,6 @@ async def health_check():
 async def initialize_bot():
     tg_app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report))
     
-    # راه‌اندازی و مقداردهی اولیه اجباری پکیج جدید
     await tg_app.initialize()
     await tg_app.start()
     
