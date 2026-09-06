@@ -23,8 +23,6 @@ NETWORKS = {
 }
 
 app = Flask(__name__)
-
-# ساخت اپلیکیشن تلگرام
 application = Application.builder().token(BOT_TOKEN).build()
 
 def get_wallet_total(address):
@@ -94,21 +92,27 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(f"Error: {e}")
-        await context.bot.send_message(chat_id=REPORT_CHANNEL, text=f"❌ خطا در پردازش: {str(e)}")
+        try:
+            await context.bot.send_message(chat_id=REPORT_CHANNEL, text=f"❌ خطا در پردازش: {str(e)}")
+        except:
+            pass
 
-# اضافه کردن هندلر
+# هندلر
 application.add_handler(
     MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report)
 )
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """روت وب‌هوک - کاملاً سینک"""
     update = Update.de_json(request.get_json(force=True), application.bot)
-    
-    # اجرای پردازش async داخل یک event loop جدید
-    asyncio.run(application.process_update(update))
-    
+
+    async def process():
+        # مهم: باید initialize بشه
+        await application.initialize()
+        await application.process_update(update)
+        await application.shutdown()
+
+    asyncio.run(process())
     return "OK"
 
 @app.route('/')
