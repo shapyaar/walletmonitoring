@@ -24,12 +24,13 @@ NETWORKS = {
 
 app = Flask(__name__)
 application = Application.builder().token(BOT_TOKEN).build()
+initialized = False
 
 def get_wallet_total(address):
     local_totals = {net: 0.0 for net in NETWORKS}
     for net, rpc in NETWORKS.items():
         try:
-            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={'timeout': 5}))
+            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={'timeout': 4}))
             checksum = Web3.to_checksum_address(address.strip())
             balance = w3.eth.get_balance(checksum)
             if balance > 0:
@@ -46,14 +47,10 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     doc = update.channel_post.document
-    logging.info(f"Processing target file: {doc.file_name}")
+    logging.info(f"Processing file: {doc.file_name}")
 
     try:
-        await context.bot.send_message(
-            chat_id=REPORT_CHANNEL,
-            text=f"📥 فایل `{doc.file_name}` دریافت شد.\n⏳ در حال جمع‌آوری موجودی کل..."
-        )
-
+        # دانلود فایل
         file = await context.bot.get_file(doc.file_id)
         content = await file.download_as_bytearray()
         text = content.decode('utf-8', errors='ignore')
@@ -61,12 +58,15 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         addresses = list(set(re.findall(r"0x[a-fA-F0-9]{40}", text)))
 
         if not addresses:
-            await context.bot.send_message(chat_id=REPORT_CHANNEL, text="❌ آدرس معتبری در فایل یافت نشد.")
+            await context.bot.send_message(
+                chat_id=REPORT_CHANNEL,
+                text=f"❌ فایل `{doc.file_name}` هیچ آدرس معتبری نداشت."
+            )
             return
 
         file_totals = {net: 0.0 for net in NETWORKS}
 
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        with ThreadPoolExecutor(max_workers=15) as executor:
             loop = asyncio.get_running_loop()
             tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
             results = await asyncio.gather(*tasks)
@@ -75,10 +75,11 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for net in NETWORKS:
                 file_totals[net] += res[net]
 
+        # فقط گزارش نهایی
         report_msg = (
-            f"📊 **گزارش مجموع موجودی فایل**\n"
+            f"📊 **گزارش نهایی**\n"
             f"📄 فایل: `{doc.file_name}`\n"
-            f"🔢 ولت‌های اسکن شده: `{len(addresses)}`\n"
+            f"🔢 تعداد ولت: `{len(addresses)}`\n"
             f"──────────────────\n"
         )
         for net, amount in file_totals.items():
@@ -90,29 +91,39 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
 
+        logging.info(f"Report sent successfully for {doc.file_name}")
+
     except Exception as e:
         logging.error(f"Error: {e}")
-        try:
-            await context.bot.send_message(chat_id=REPORT_CHANNEL, text=f"❌ خطا در پردازش: {str(e)}")
-        except:
-            pass
+        await context.bot.send_message(
+            chat_id=REPORT_CHANNEL,
+            text=f"❌ خطا در پردازش فایل `{doc.file_name}`:\n`{str(e)}`"
+        )
 
-# هندلر
 application.add_handler(
     MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report)
 )
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    global initialized
+
     update = Update.de_json(request.get_json(force=True), application.bot)
 
     async def process():
-        # مهم: باید initialize بشه
-        await application.initialize()
-        await application.process_update(update)
-        await application.shutdown()
+        global initialized
+        if not initialized:
+            await application.initialize()
+            initialized = True
+            logging.info("Application initialized")
 
-    asyncio.run(process())
+        await application.process_update(update)
+
+    try:
+        asyncio.run(process())
+    except Exception as e:
+        logging.error(f"Webhook error: {e}")
+
     return "OK"
 
 @app.route('/')
