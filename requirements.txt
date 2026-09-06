@@ -1,3 +1,4 @@
-quart
+flask
 python-telegram-bot
 web3
+gunicorn
