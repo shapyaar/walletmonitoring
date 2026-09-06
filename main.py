@@ -3,16 +3,17 @@ import re
 import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from aiohttp import web
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 from web3 import Web3
 
-# تنظیمات لاگ
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 SOURCE_CHANNEL = int(os.environ.get("SOURCE_CHANNEL", 0))
 REPORT_CHANNEL = int(os.environ.get("REPORT_CHANNEL", 0))
+PORT = int(os.environ.get("PORT", 10000))
 
 NETWORKS = {
     'ETH': 'https://eth.llamarpc.com',
@@ -31,7 +32,8 @@ def get_wallet_total(address):
             balance = w3.eth.get_balance(checksum)
             if balance > 0:
                 local_totals[net] = float(w3.from_wei(balance, 'ether'))
-        except: continue
+        except: 
+            continue
     return local_totals
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -78,21 +80,38 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error in handle_document: {e}")
 
+# یک سرور ساده برای پاسخ به پورت رندر و جلوگیری از ارور No open ports
+async def handle_web(request):
+    return web.Response(text="Bot is running!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_web)
+    app.router.add_post("/webhook", handle_web) # برای پاسخ به درخواست‌های رندر
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    logging.info(f"Web server started on port {PORT}")
+
 async def main():
+    # راه‌اندازی سرور وب برای باز نگه داشتن پورت روی رندر
+    await start_web_server()
+
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     
-    # حذف وب‌هوک احتمالی قبلی
+    # پاک کردن وب‌هوک تلگرام تا تداخلی با پولینگ ایجاد نکند
     await application.bot.delete_webhook(drop_pending_updates=True)
     
     application.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, handle_document))
     
     await application.initialize()
     await application.start()
-    await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    await application.updater.start_polling(drop_pending_updates=True)
     
-    logging.info("Bot is running in pure Polling mode successfully.")
+    logging.info("Telegram Bot started polling successfully.")
     
-    # نگه داشتن برنامه روشن برای رندر
+    # زنده نگه داشتن لوپ اصلی
     while True:
         await asyncio.sleep(3600)
 
