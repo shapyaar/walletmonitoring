@@ -3,17 +3,17 @@ import re
 import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from aiohttp import web
+from flask import Flask, request
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from web3 import Web3
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-SOURCE_CHANNEL = int(os.environ.get("SOURCE_CHANNEL", 0))
-REPORT_CHANNEL = int(os.environ.get("REPORT_CHANNEL", 0))
-PORT = int(os.environ.get("PORT", 10000))
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # بهتره از Environment Variable استفاده کنی
+SOURCE_CHANNEL = -1003533610913
+REPORT_CHANNEL = -1004337084974
+RENDER_URL = os.environ.get("RENDER_URL", "https://regroupmywallet.onrender.com")
 
 NETWORKS = {
     'ETH': 'https://eth.llamarpc.com',
@@ -23,42 +23,51 @@ NETWORKS = {
     'OP': 'https://mainnet.optimism.io'
 }
 
+app = Flask(__name__)
+application = Application.builder().token(BOT_TOKEN).build()
+
 def get_wallet_total(address):
     local_totals = {net: 0.0 for net in NETWORKS}
     for net, rpc in NETWORKS.items():
         try:
-            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={'timeout': 3}))
+            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={'timeout': 5}))
             checksum = Web3.to_checksum_address(address.strip())
             balance = w3.eth.get_balance(checksum)
             if balance > 0:
                 local_totals[net] = float(w3.from_wei(balance, 'ether'))
-        except: 
+        except:
             continue
     return local_totals
 
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        if not update.channel_post or not update.channel_post.document:
-            return
-        
-        chat = update.channel_post.chat
-        if chat.id != SOURCE_CHANNEL:
-            return
+async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.channel_post or not update.channel_post.document:
+        return
+    
+    if update.channel_post.chat.id != SOURCE_CHANNEL:
+        return
 
-        doc = update.channel_post.document
-        logging.info(f"Processing target file: {doc.file_name}")
-        
+    doc = update.channel_post.document
+    logging.info(f"Processing: {doc.file_name}")
+
+    try:
+        await context.bot.send_message(
+            chat_id=REPORT_CHANNEL,
+            text=f"📥 فایل `{doc.file_name}` دریافت شد.\n⏳ در حال جمع‌آوری موجودی..."
+        )
+
         file = await context.bot.get_file(doc.file_id)
         content = await file.download_as_bytearray()
         text = content.decode('utf-8', errors='ignore')
-        
+
         addresses = list(set(re.findall(r"0x[a-fA-F0-9]{40}", text)))
+        
         if not addresses:
-            logging.info(f"No valid addresses found in {doc.file_name}")
+            await context.bot.send_message(chat_id=REPORT_CHANNEL, text="❌ آدرس معتبری یافت نشد.")
             return
 
         file_totals = {net: 0.0 for net in NETWORKS}
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        
+        with ThreadPoolExecutor(max_workers=20) as executor:
             loop = asyncio.get_running_loop()
             tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
             results = await asyncio.gather(*tasks)
@@ -67,53 +76,43 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for net in NETWORKS:
                 file_totals[net] += res[net]
 
-        report_msg = f"📊 **گزارش مجموع موجودی فایل**\n"
-        report_msg += f"📄 فایل: `{doc.file_name}`\n"
-        report_msg += f"🔢 ولت‌های اسکن شده: `{len(addresses)}`\n"
-        report_msg += "──────────────────\n"
+        report_msg = (
+            f"📊 **گزارش مجموع موجودی**\n"
+            f"📄 فایل: `{doc.file_name}`\n"
+            f"🔢 تعداد ولت: `{len(addresses)}`\n"
+            f"──────────────────\n"
+        )
         for net, amount in file_totals.items():
             report_msg += f"🔹 {net}: `{amount:.6f}`\n"
-        
-        await context.bot.send_message(chat_id=REPORT_CHANNEL, text=report_msg, parse_mode='Markdown')
-        logging.info(f"Report for {doc.file_name} sent successfully.")
-        
+
+        await context.bot.send_message(
+            chat_id=REPORT_CHANNEL,
+            text=report_msg,
+            parse_mode='Markdown'
+        )
+
     except Exception as e:
-        logging.error(f"Error in handle_document: {e}")
+        logging.error(f"Error: {e}")
+        await context.bot.send_message(chat_id=REPORT_CHANNEL, text=f"❌ خطا: {str(e)}")
 
-# یک سرور ساده برای پاسخ به پورت رندر و جلوگیری از ارور No open ports
-async def handle_web(request):
-    return web.Response(text="Bot is running!")
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """این روت دیگه async نیست"""
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    # پردازش آپدیت به صورت async در پس‌زمینه
+    asyncio.create_task(application.process_update(update))
+    return "OK"
 
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle_web)
-    app.router.add_post("/webhook", handle_web) # برای پاسخ به درخواست‌های رندر
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    logging.info(f"Web server started on port {PORT}")
+@app.route('/')
+def health():
+    return "Bot is alive!"
 
-async def main():
-    # راه‌اندازی سرور وب برای باز نگه داشتن پورت روی رندر
-    await start_web_server()
-
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-    
-    # پاک کردن وب‌هوک تلگرام تا تداخلی با پولینگ ایجاد نکند
-    await application.bot.delete_webhook(drop_pending_updates=True)
-    
-    application.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, handle_document))
-    
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling(drop_pending_updates=True)
-    
-    logging.info("Telegram Bot started polling successfully.")
-    
-    # زنده نگه داشتن لوپ اصلی
-    while True:
-        await asyncio.sleep(3600)
+# تنظیم هندلر
+application.add_handler(
+    MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report)
+)
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    # فقط برای تست لوکال
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
