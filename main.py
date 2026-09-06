@@ -4,124 +4,109 @@ import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram import Bot, Update
 from web3 import Web3
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 SOURCE_CHANNEL = -1003533610913
 REPORT_CHANNEL = -1004337084974
 
 NETWORKS = {
-    'ETH': 'https://eth.llamarpc.com',
-    'BSC': 'https://bsc-dataseed.binance.org/',
-    'POLYGON': 'https://polygon-rpc.com',
-    'ARB': 'https://arb1.arbitrum.io/rpc',
-    'OP': 'https://mainnet.optimism.io'
+    "ETH": "https://eth.llamarpc.com",
+    "BSC": "https://bsc-dataseed.binance.org/",
+    "POLYGON": "https://polygon-rpc.com",
+    "ARB": "https://arb1.arbitrum.io/rpc",
+    "OP": "https://mainnet.optimism.io"
 }
 
 app = Flask(__name__)
-
-# ساخت اپلیکیشن
-application = Application.builder().token(BOT_TOKEN).build()
+bot = Bot(token=BOT_TOKEN)
 
 def get_wallet_total(address):
-    local_totals = {net: 0.0 for net in NETWORKS}
+    totals = {net: 0.0 for net in NETWORKS}
     for net, rpc in NETWORKS.items():
         try:
-            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={'timeout': 5}))
+            w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={"timeout": 5}))
             checksum = Web3.to_checksum_address(address.strip())
             balance = w3.eth.get_balance(checksum)
             if balance > 0:
-                local_totals[net] = float(w3.from_wei(balance, 'ether'))
+                totals[net] = float(w3.from_wei(balance, "ether"))
         except Exception:
             continue
-    return local_totals
+    return totals
 
-async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.channel_post or not update.channel_post.document:
-        return
-
-    if update.channel_post.chat.id != SOURCE_CHANNEL:
-        return
-
-    doc = update.channel_post.document
-    logging.info(f"Processing: {doc.file_name}")
-
+def process_file(file_id, file_name):
     try:
-        file = await context.bot.get_file(doc.file_id)
-        content = await file.download_as_bytearray()
-        text = content.decode('utf-8', errors='ignore')
+        # دانلود فایل
+        file = bot.get_file(file_id)
+        content = file.download_as_bytearray()
+        text = content.decode("utf-8", errors="ignore")
 
         addresses = list(set(re.findall(r"0x[a-fA-F0-9]{40}", text)))
 
         if not addresses:
-            await context.bot.send_message(
+            bot.send_message(
                 chat_id=REPORT_CHANNEL,
-                text=f"❌ فایل `{doc.file_name}` آدرس معتبری نداشت."
+                text=f"❌ فایل `{file_name}` هیچ آدرس معتبری نداشت."
             )
             return
 
-        file_totals = {net: 0.0 for net in NETWORKS}
+        totals = {net: 0.0 for net in NETWORKS}
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            loop = asyncio.get_running_loop()
-            tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
-            results = await asyncio.gather(*tasks)
+        with ThreadPoolExecutor(max_workers=12) as executor:
+            results = list(executor.map(get_wallet_total, addresses))
 
         for res in results:
             for net in NETWORKS:
-                file_totals[net] += res[net]
+                totals[net] += res[net]
 
         report = (
             f"📊 **گزارش نهایی**\n"
-            f"📄 فایل: `{doc.file_name}`\n"
+            f"📄 فایل: `{file_name}`\n"
             f"🔢 تعداد ولت: `{len(addresses)}`\n"
             f"──────────────────\n"
         )
-        for net, amount in file_totals.items():
+        for net, amount in totals.items():
             report += f"🔹 {net}: `{amount:.6f}`\n"
 
-        await context.bot.send_message(
+        bot.send_message(
             chat_id=REPORT_CHANNEL,
             text=report,
             parse_mode="Markdown"
         )
-        logging.info("Report sent successfully")
+        logging.info(f"Report sent for {file_name}")
 
     except Exception as e:
-        logging.exception("Error while processing")
-        await context.bot.send_message(
+        logging.error(f"Error: {e}")
+        bot.send_message(
             chat_id=REPORT_CHANNEL,
-            text=f"❌ خطا در پردازش `{doc.file_name}`:\n`{e}`"
+            text=f"❌ خطا در پردازش `{file_name}`:\n`{e}`"
         )
 
-application.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report))
-
 @app.route("/webhook", methods=["POST"])
-async def webhook():
-    """این روت async هست"""
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    await application.process_update(update)
+def webhook():
+    data = request.get_json(force=True)
+    update = Update.de_json(data, bot)
+
+    if update.channel_post and update.channel_post.document:
+        chat_id = update.channel_post.chat.id
+        if chat_id == SOURCE_CHANNEL:
+            doc = update.channel_post.document
+            # پردازش در ترد جدا تا وب‌هوک سریع جواب بده
+            import threading
+            threading.Thread(
+                target=process_file,
+                args=(doc.file_id, doc.file_name)
+            ).start()
+
     return "OK"
 
 @app.route("/")
 def health():
     return "Bot is running"
 
-async def main():
-    await application.initialize()
-    logging.info("Application initialized")
-
-    # اجرای Flask با پشتیبانی از async
-    from hypercorn.asyncio import serve
-    from hypercorn.config import Config
-
-    config = Config()
-    config.bind = [f"0.0.0.0:{os.environ.get('PORT', 10000)}"]
-    await serve(app, config)
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
