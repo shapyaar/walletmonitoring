@@ -12,9 +12,9 @@ from web3 import Web3
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 # --- تنظیمات اصلی ---
-BOT_TOKEN = '8937335440:AAH_GvnwYvTx5mEXnMvROkuYmSfX7pZW8Lc'
+BOT_TOKEN = '8794980895:AAG7PSNwSZiWVyxj58POCVTV9ZgPMG-LJ_U'
 SOURCE_CHANNEL = -1003533610913
-REPORT_CHANNEL = -1004337084974
+REPORT_CHANNEL = -1003893481541
 RENDER_URL = "https://walletmonitoring.onrender.com" 
 
 NETWORKS = {
@@ -25,7 +25,6 @@ NETWORKS = {
     'OP': 'https://mainnet.optimism.io'
 }
 
-# استفاده از Quart به جای Flask
 app = Quart(__name__)
 tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -49,10 +48,6 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.id != SOURCE_CHANNEL:
         return
 
-    # اجرا در پس‌زمینه بدون معطل کردن وب‌هوک تلگرام
-    asyncio.create_task(run_file_processing(update, context))
-
-async def run_file_processing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.channel_post.document
     logging.info(f"Processing target file: {doc.file_name}")
 
@@ -74,7 +69,6 @@ async def run_file_processing(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         file_totals = {net: 0.0 for net in NETWORKS}
         
-        # کاهش تعداد workerها برای جلوگیری از بلاک شدن توسط RPCها
         with ThreadPoolExecutor(max_workers=10) as executor:
             loop = asyncio.get_running_loop()
             tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
@@ -95,6 +89,8 @@ async def run_file_processing(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     except Exception as e:
         logging.error(f"Error in processing: {e}")
+
+@app.route('/webhook', methods=['POST'])
 async def webhook():
     data = await request.get_json(force=True)
     update = Update.de_json(data, tg_app.bot)
