@@ -101,8 +101,12 @@ async def webhook():
 async def health_check():
     return "Bot is running on Webhook mode with Quart!"
 
-async def main():
+async def initialize_bot():
     tg_app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report))
+    
+    # راه‌اندازی و مقداردهی اولیه اجباری پکیج جدید
+    await tg_app.initialize()
+    await tg_app.start()
     
     webhook_url = f"{RENDER_URL}/webhook"
     await tg_app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES)
@@ -111,5 +115,5 @@ async def main():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    loop.run_until_complete(initialize_bot())
     app.run(host='0.0.0.0', port=port)
