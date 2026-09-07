@@ -21,16 +21,7 @@ NETWORKS = {
     'BSC': 'https://bsc-dataseed.binance.org/',
 }
 
-request_config = HTTPXRequest(
-    connection_pool_size=50,
-    pool_timeout=60.0,
-    connect_timeout=30.0,
-    read_timeout=60.0
-)
-bot = Bot(token=BOT_TOKEN, request=request_config)
-
 app = Flask(__name__)
-
 file_queue = queue.Queue()
 
 def get_wallet_total(address: str) -> dict:
@@ -46,6 +37,15 @@ def get_wallet_total(address: str) -> dict:
     return totals
 
 async def process_one_file(doc):
+    # ساخت Bot تازه داخل همین loop
+    request_config = HTTPXRequest(
+        connection_pool_size=20,
+        pool_timeout=30.0,
+        connect_timeout=20.0,
+        read_timeout=30.0
+    )
+    bot = Bot(token=BOT_TOKEN, request=request_config)
+
     try:
         logging.info(f"=== Start: {doc.file_name} ===")
 
@@ -53,7 +53,6 @@ async def process_one_file(doc):
         content = await file.download_as_bytearray()
         text = content.decode('utf-8', errors='ignore')
 
-        # استخراج جفت‌های Phrase + Addr
         pattern = r"Phrase:\s*(.+?)\s*\|\s*Addr:\s*(0x[a-fA-F0-9]{40})"
         matches = re.findall(pattern, text, re.IGNORECASE)
 
@@ -63,14 +62,12 @@ async def process_one_file(doc):
             await bot.send_message(chat_id=REPORT_CHANNEL, text=f"❌ در فایل `{doc.file_name}` موردی پیدا نشد.")
             return
 
-        # استخراج شناسه تست
         test_id_match = re.search(r"تعداد تست[:\s]*(\d+)", text)
         test_id = test_id_match.group(1) if test_id_match else "نامشخص"
 
         file_totals = {'ETH': 0.0, 'BSC': 0.0}
         rich_wallets = []
 
-        # اسکن موجودی‌ها
         with ThreadPoolExecutor(max_workers=8) as executor:
             loop = asyncio.get_running_loop()
             addresses = [addr for _, addr in matches]
@@ -120,9 +117,9 @@ async def process_one_file(doc):
                     msg += f"• BSC: `{wallet['balances']['BSC']:.6f}`\n"
 
                 await bot.send_message(chat_id=REPORT_CHANNEL, text=msg, parse_mode='Markdown')
-                await asyncio.sleep(0.4)
+                await asyncio.sleep(0.5)
 
-        logging.info(f"=== Finished: {doc.file_name} | Rich wallets: {len(rich_wallets)} ===")
+        logging.info(f"=== Finished: {doc.file_name} | Rich: {len(rich_wallets)} ===")
 
     except Exception as e:
         logging.error(f"Error: {e}", exc_info=True)
@@ -135,7 +132,11 @@ def worker():
     while True:
         doc = file_queue.get()
         try:
-            asyncio.run(process_one_file(doc))
+            # هر بار یک loop جدید و تمیز
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(process_one_file(doc))
+            loop.close()
         except Exception as e:
             logging.error(f"Worker error: {e}")
         finally:
@@ -146,12 +147,12 @@ threading.Thread(target=worker, daemon=True).start()
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.get_json(force=True)
-    update = Update.de_json(data, bot)
+    update = Update.de_json(data, bot=None)  # bot رو اینجا لازم نداریم
 
-    if update.channel_post and update.channel_post.document:
+    if update and update.channel_post and update.channel_post.document:
         if update.channel_post.chat.id == SOURCE_CHANNEL:
             file_queue.put(update.channel_post.document)
-            logging.info(f"Added to queue: {update.channel_post.document.file_name} | Size: {file_queue.qsize()}")
+            logging.info(f"Added to queue: {update.channel_post.document.file_name}")
 
     return "OK"
 
