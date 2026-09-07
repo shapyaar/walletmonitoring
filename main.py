@@ -10,11 +10,10 @@ from web3 import Web3
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-# --- تنظیمات اصلی ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8794980895:AAG7PSNwSZiWVyxj58POCVTV9ZgPMG-LJ_U")
 SOURCE_CHANNEL = -1003533610913
 REPORT_CHANNEL = -1004337084974
-RENDER_URL = os.environ.get("RENDER_URL", "https://regroupmywallet.onrender.com")
+RENDER_URL = os.environ.get("RENDER_URL", "https://given-vanny-shapyaar-dba0135c.koyeb.app")
 
 NETWORKS = {
     'ETH': 'https://eth.llamarpc.com',
@@ -68,7 +67,7 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         file_totals = {net: 0.0 for net in NETWORKS}
 
-        with ThreadPoolExecutor(max_workers=30) as executor:
+        with ThreadPoolExecutor(max_workers=20) as executor:
             loop = asyncio.get_running_loop()
             tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
             results = await asyncio.gather(*tasks)
@@ -77,10 +76,12 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for net in NETWORKS:
                 file_totals[net] += res[net]
 
-        report_msg = f"📊 **گزارش مجموع موجودی فایل**\n"
-        report_msg += f"📄 فایل: `{doc.file_name}`\n"
-        report_msg += f"🔢 ولت‌های اسکن شده: `{len(addresses)}`\n"
-        report_msg += "──────────────────\n"
+        report_msg = (
+            f"📊 **گزارش مجموع موجودی فایل**\n"
+            f"📄 فایل: `{doc.file_name}`\n"
+            f"🔢 ولت‌های اسکن شده: `{len(addresses)}`\n"
+            f"──────────────────\n"
+        )
         for net, amount in file_totals.items():
             report_msg += f"🔹 {net}: `{amount:.6f}`\n"
 
@@ -90,9 +91,11 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Error: {e}")
         await context.bot.send_message(chat_id=REPORT_CHANNEL, text=f"❌ خطا: {e}")
 
+# اضافه کردن هندلر
+tg_app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report))
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """این روت دیگه async نیست"""
     update = Update.de_json(request.get_json(force=True), tg_app.bot)
     asyncio.run(tg_app.process_update(update))
     return "OK"
@@ -101,25 +104,12 @@ def webhook():
 def health_check():
     return "Bot is running on Webhook mode!"
 
-async def main():
-    # اضافه کردن هندلر
-    tg_app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report))
-
-    # initialize کردن اپلیکیشن (خیلی مهم)
+# این قسمت فقط برای initialize و set webhook هست
+async def setup():
     await tg_app.initialize()
-
-    # تنظیم وب‌هوک
     webhook_url = f"{RENDER_URL}/webhook"
     await tg_app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES)
     logging.info(f"Webhook set to {webhook_url}")
 
-    # اجرای سرور
-    port = int(os.environ.get('PORT', 10000))
-    from werkzeug.serving import run_simple
-    run_simple('0.0.0.0', port, app, use_reloader=False)
-
-if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+# اجرای setup موقع استارت
+asyncio.get_event_loop().run_until_complete(setup())
