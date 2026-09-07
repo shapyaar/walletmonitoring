@@ -1,19 +1,16 @@
 import os
 import re
 import logging
-import asyncio
-from flask import Flask, request
 from concurrent.futures import ThreadPoolExecutor
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from flask import Flask, request
+from telegram import Bot, Update
 from web3 import Web3
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8794980895:AAG7PSNwSZiWVyxj58POCVTV9ZgPMG-LJ_U")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 SOURCE_CHANNEL = -1003533610913
 REPORT_CHANNEL = -1004337084974
-RENDER_URL = os.environ.get("RENDER_URL", "https://given-vanny-shapyaar-dba0135c.koyeb.app")
 
 NETWORKS = {
     'ETH': 'https://eth.llamarpc.com',
@@ -24,7 +21,7 @@ NETWORKS = {
 }
 
 app = Flask(__name__)
-tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
+bot = Bot(token=BOT_TOKEN)
 
 def get_wallet_total(address):
     local_totals = {net: 0.0 for net in NETWORKS}
@@ -39,38 +36,25 @@ def get_wallet_total(address):
             continue
     return local_totals
 
-async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.channel_post or not update.channel_post.document:
-        return
-
-    if update.channel_post.chat.id != SOURCE_CHANNEL:
-        return
-
-    doc = update.channel_post.document
-    logging.info(f"Processing target file: {doc.file_name}")
-
+def process_report(doc):
     try:
-        await context.bot.send_message(
-            chat_id=REPORT_CHANNEL,
-            text=f"📥 فایل `{doc.file_name}` دریافت شد.\n⏳ در حال جمع‌آوری موجودی کل..."
-        )
+        logging.info(f"Processing file: {doc.file_name}")
 
-        file = await context.bot.get_file(doc.file_id)
-        content = await file.download_as_bytearray()
+        # دانلود فایل
+        file = bot.get_file(doc.file_id)
+        content = file.download_as_bytearray()
         text = content.decode('utf-8', errors='ignore')
 
         addresses = list(set(re.findall(r"0x[a-fA-F0-9]{40}", text)))
 
         if not addresses:
-            await context.bot.send_message(chat_id=REPORT_CHANNEL, text="❌ آدرس معتبری در فایل یافت نشد.")
+            bot.send_message(chat_id=REPORT_CHANNEL, text="❌ آدرس معتبری در فایل یافت نشد.")
             return
 
         file_totals = {net: 0.0 for net in NETWORKS}
 
-        with ThreadPoolExecutor(max_workers=20) as executor:
-            loop = asyncio.get_running_loop()
-            tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
-            results = await asyncio.gather(*tasks)
+        with ThreadPoolExecutor(max_workers=15) as executor:
+            results = list(executor.map(get_wallet_total, addresses))
 
         for res in results:
             for net in NETWORKS:
@@ -85,31 +69,30 @@ async def process_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for net, amount in file_totals.items():
             report_msg += f"🔹 {net}: `{amount:.6f}`\n"
 
-        await context.bot.send_message(chat_id=REPORT_CHANNEL, text=report_msg, parse_mode='Markdown')
+        bot.send_message(chat_id=REPORT_CHANNEL, text=report_msg, parse_mode='Markdown')
+        logging.info("Report sent successfully")
 
     except Exception as e:
         logging.error(f"Error: {e}")
-        await context.bot.send_message(chat_id=REPORT_CHANNEL, text=f"❌ خطا: {e}")
-
-# اضافه کردن هندلر
-tg_app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.Document.ALL, process_report))
+        bot.send_message(chat_id=REPORT_CHANNEL, text=f"❌ خطا: {e}")
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), tg_app.bot)
-    asyncio.run(tg_app.process_update(update))
+    data = request.get_json(force=True)
+    update = Update.de_json(data, bot)
+
+    if update.channel_post and update.channel_post.document:
+        if update.channel_post.chat.id == SOURCE_CHANNEL:
+            # پردازش در ترد جدا (تا وب‌هوک سریع جواب بده)
+            import threading
+            threading.Thread(target=process_report, args=(update.channel_post.document,)).start()
+
     return "OK"
 
 @app.route('/')
 def health_check():
-    return "Bot is running on Webhook mode!"
+    return "Bot is running"
 
-# این قسمت فقط برای initialize و set webhook هست
-async def setup():
-    await tg_app.initialize()
-    webhook_url = f"{RENDER_URL}/webhook"
-    await tg_app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES)
-    logging.info(f"Webhook set to {webhook_url}")
-
-# اجرای setup موقع استارت
-asyncio.get_event_loop().run_until_complete(setup())
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port)
