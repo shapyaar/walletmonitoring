@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request
 from telegram import Bot, Update
@@ -36,25 +37,27 @@ def get_wallet_total(address):
             continue
     return local_totals
 
-def process_report(doc):
+async def process_report(doc):
     try:
         logging.info(f"Processing file: {doc.file_name}")
 
         # دانلود فایل
-        file = bot.get_file(doc.file_id)
-        content = file.download_as_bytearray()
+        file = await bot.get_file(doc.file_id)
+        content = await file.download_as_bytearray()
         text = content.decode('utf-8', errors='ignore')
 
         addresses = list(set(re.findall(r"0x[a-fA-F0-9]{40}", text)))
 
         if not addresses:
-            bot.send_message(chat_id=REPORT_CHANNEL, text="❌ آدرس معتبری در فایل یافت نشد.")
+            await bot.send_message(chat_id=REPORT_CHANNEL, text="❌ آدرس معتبری در فایل یافت نشد.")
             return
 
         file_totals = {net: 0.0 for net in NETWORKS}
 
         with ThreadPoolExecutor(max_workers=15) as executor:
-            results = list(executor.map(get_wallet_total, addresses))
+            loop = asyncio.get_running_loop()
+            tasks = [loop.run_in_executor(executor, get_wallet_total, addr) for addr in addresses]
+            results = await asyncio.gather(*tasks)
 
         for res in results:
             for net in NETWORKS:
@@ -69,12 +72,15 @@ def process_report(doc):
         for net, amount in file_totals.items():
             report_msg += f"🔹 {net}: `{amount:.6f}`\n"
 
-        bot.send_message(chat_id=REPORT_CHANNEL, text=report_msg, parse_mode='Markdown')
+        await bot.send_message(chat_id=REPORT_CHANNEL, text=report_msg, parse_mode='Markdown')
         logging.info("Report sent successfully")
 
     except Exception as e:
         logging.error(f"Error: {e}")
-        bot.send_message(chat_id=REPORT_CHANNEL, text=f"❌ خطا: {e}")
+        try:
+            await bot.send_message(chat_id=REPORT_CHANNEL, text=f"❌ خطا: {e}")
+        except:
+            pass
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -83,9 +89,12 @@ def webhook():
 
     if update.channel_post and update.channel_post.document:
         if update.channel_post.chat.id == SOURCE_CHANNEL:
-            # پردازش در ترد جدا (تا وب‌هوک سریع جواب بده)
+            # اجرای پردازش async در ترد جدا
+            def run_async():
+                asyncio.run(process_report(update.channel_post.document))
+
             import threading
-            threading.Thread(target=process_report, args=(update.channel_post.document,)).start()
+            threading.Thread(target=run_async).start()
 
     return "OK"
 
